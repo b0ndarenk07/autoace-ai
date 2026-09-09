@@ -32,6 +32,7 @@ autoace-ai/
 │       │   ├── BatchUploader.tsx
 │       │   ├── ErrorList.tsx
 │       │   └── ResultsTable.tsx
+│       ├── .env.local
 │       ├── package.json
 │       ├── postcss.config.mjs
 │       ├── tailwind.config.ts
@@ -77,71 +78,79 @@ autoace-ai/
 │       ├── pipeline.py
 │       └── worker.py
 │
-├── create-files.sh
+├── startup.sh
 ├── pyproject.toml
 └── README.md
 ```
 
-                    AutoAce AI Dashboard
-                            │
-             ┌──────────────┴──────────────┐
-             │                             │
-       Single Call                    Batch Evaluation
-             │                             │
-        .ogg / audio                 ZIP / folder
-             │                             │
-             ▼                             ▼
-       Analyze one                    Validate batch
-             │                             │
-             └──────────────┬──────────────┘
-                            ▼
-                     Same prediction
-                         pipeline
-                            │
-                            ▼
-                    Required JSON schema
-                            │
-                            ▼
-                       Results UI
+## Getting Started
 
-Start
-↓
-POST /batches/:id/process
-↓
-poll / websocket
-↓
-progress
-↓
-results
-↓
+### Requirements
 
-CSV / JSON download
+- Python 3
+- Node.js and npm
+- `ffmpeg` available on the system PATH for audio decoding
 
-Browser
-│
-▼
-Next.js
-│
-▼
-FastAPI
-│
-├── Batch validation
-├── Job management
-└── Results
-│
-▼
-Python worker
-│
-├── Audio preprocessing
-├── Emotion model
-├── Noise detection
-└── Quality analysis
+### Install Everything
 
-BACKEND
-POST /auth/login
-POST /batches
-GET /batches/{batch_id}
-GET /batches/{batch_id}/results
-GET /batches/{batch_id}/download
+From the repository root, run:
 
-POST /single
+```bash
+./startup.sh
+```
+
+The script creates the backend virtual environment, installs Python dependencies, installs frontend dependencies, and creates `apps/web/.env.local` if it does not already exist.
+
+### Frontend Environment
+
+The frontend reads the backend URL from `apps/web/.env.local`:
+
+```env
+NEXT_PUBLIC_API_URL=http://localhost:8000
+```
+
+Restart the Next.js development server after changing this file.
+
+### Start the Backend
+
+In one terminal:
+
+```bash
+cd apps/api
+./.venv/bin/python -m uvicorn app.main:app \
+	--reload \
+	--host 0.0.0.0 \
+	--port 8000
+```
+
+The API is available at `http://localhost:8000`.
+
+Interactive API documentation is available at:
+
+```text
+http://localhost:8000/docs
+```
+
+Open that URL in a browser to view the Swagger documentation and try the API endpoints.
+
+### Start the Frontend
+
+In a second terminal:
+
+```bash
+cd apps/web
+npm run dev
+```
+
+The dashboard is available at `http://localhost:3000`.
+
+### Main API Routes
+
+```text
+POST /single                 Analyze one .ogg or .wav file
+POST /batches                Upload a ZIP of audio files
+GET  /batches/{batch_id}     Get batch progress and current results
+GET  /results/{batch_id}     Get batch results
+GET  /results/{batch_id}/download?format=json
+GET  /results/{batch_id}/download?format=csv
+```
