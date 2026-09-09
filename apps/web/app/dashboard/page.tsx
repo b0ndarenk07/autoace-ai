@@ -15,9 +15,7 @@ import ResultsTable, {
   type AudioResult,
 } from "../../components/ResultsTable";
 
-const apiBaseUrl =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-
+const apiBaseUrl =process.env.NEXT_PUBLIC_API_URL;
 export default function DashboardPage() {
   const [batchId, setBatchId] = useState<string | null>(null);
   const [batchStatus, setBatchStatus] = useState<
@@ -25,6 +23,9 @@ export default function DashboardPage() {
   >("idle");
   const [batchTotal, setBatchTotal] = useState(0);
   const [batchProcessed, setBatchProcessed] = useState(0);
+  const [currentFile, setCurrentFile] = useState<string | null>(null);
+  const [currentProgress, setCurrentProgress] = useState(0);
+  const [currentStage, setCurrentStage] = useState("waiting");
   const [results, setResults] = useState<AudioResult[]>([]);
 
   useEffect(() => {
@@ -40,20 +41,35 @@ export default function DashboardPage() {
         const data = await response.json();
         setBatchTotal(data.total ?? 0);
         setBatchProcessed(data.processed ?? 0);
+        setCurrentFile(data.current_file ?? null);
+        setCurrentProgress(data.current_progress ?? 0);
+        setCurrentStage(data.current_stage ?? "waiting");
+
+        const completedResults = (data.results ?? []).filter(
+          (result: AudioResult & { status?: string }) =>
+            result.status === "completed",
+        );
+        setResults(completedResults);
 
         if (data.status === "processing") {
           setBatchStatus("processing");
           return;
         }
 
-        if (data.status === "completed_with_errors") {
-          setBatchStatus("completed");
-          return;
-        }
+        const isFinished =
+          data.status === "completed" ||
+          data.status === "completed_with_errors" ||
+          data.status === "error";
 
-        setBatchStatus(data.status === "error" ? "error" : "completed");
+        setBatchStatus(
+          data.status === "error"
+            ? "error"
+            : isFinished
+              ? "completed"
+              : "processing",
+        );
 
-        if (data.status === "completed" || data.status === "error") {
+        if (isFinished) {
           if (timer) clearInterval(timer);
         }
       } catch {
@@ -148,7 +164,7 @@ export default function DashboardPage() {
             <div>
               <h3 className="text-lg font-medium">Upload a batch</h3>
               <p className="mt-1 text-sm text-slate-400">
-                Upload a ZIP containing audio files and a CSV manifest.
+                Upload a ZIP containing audio files.
               </p>
             </div>
           </div>
@@ -176,6 +192,9 @@ export default function DashboardPage() {
                 total={batchTotal}
                 processed={batchProcessed}
                 status={batchStatus}
+                currentFile={currentFile}
+                currentProgress={currentProgress}
+                currentStage={currentStage}
               />
             </div>
           )}
@@ -188,35 +207,6 @@ export default function DashboardPage() {
           />
         </section>
 
-        <section className="mt-8">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <h3 className="text-lg font-medium">Recent batches</h3>
-              <p className="text-sm text-slate-400">
-                Your recently submitted audio analysis jobs.
-              </p>
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/50">
-            <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
-              <FileAudio
-                size={36}
-                className="mb-4 text-slate-600"
-              />
-
-              <p className="text-sm font-medium text-slate-300">
-                {batchId ? "Latest batch is active" : "No batches yet"}
-              </p>
-
-              <p className="mt-1 max-w-md text-sm text-slate-500">
-                {batchId
-                  ? `Batch ${batchId.slice(0, 8)} is running with ${batchProcessed}/${batchTotal} files processed.`
-                  : "Upload your first batch above and its processing status and results will appear here."}
-              </p>
-            </div>
-          </div>
-        </section>
       </div>
     </main>
   );

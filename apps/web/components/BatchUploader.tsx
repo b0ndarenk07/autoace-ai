@@ -33,8 +33,7 @@ export default function BatchUploader({
     setIsUploading(true);
 
     try {
-      const apiBaseUrl =
-        process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+      const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL;
       const formData = new FormData();
       formData.append("file", file);
 
@@ -82,7 +81,7 @@ export default function BatchUploader({
       <input
         ref={inputRef}
         type="file"
-        accept=".zip,.ogg,audio/ogg"
+        accept=".zip,.ogg,.wav,audio/ogg,audio/wav"
         className="hidden"
         onChange={(event) => handleFile(event.target.files?.[0])}
       />
@@ -103,7 +102,7 @@ export default function BatchUploader({
         </span>
 
         <span className="mt-2 text-xs text-slate-500">
-          Upload a ZIP batch or a single .ogg call
+          Upload a ZIP batch or a single .ogg/.wav call
         </span>
       </button>
 

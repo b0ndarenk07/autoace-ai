@@ -8,6 +8,7 @@ router = APIRouter(prefix="/single", tags=["single"])
 
 ALLOWED_EXTENSIONS = {
     ".ogg",
+    ".wav",
 }
 
 
@@ -17,7 +18,7 @@ async def analyze_single_call(
 ):
     """
     Analyze one production call.
-    Input: file.ogg - Audio file in .ogg format.
+    Input: file.ogg or file.wav - Audio file in .ogg or .wav format.
     Output: Exact AutoAce prediction schema.
     """
 
@@ -34,7 +35,7 @@ async def analyze_single_call(
     if extension not in ALLOWED_EXTENSIONS:
         raise HTTPException(
             status_code=400,
-            detail="Only .ogg audio files are currently supported.",
+            detail="Only .ogg and .wav audio files are currently supported.",
         )
 
     audio_bytes = await file.read()

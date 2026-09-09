@@ -4,20 +4,27 @@ interface BatchProgressProps {
   total: number;
   processed: number;
   status?: "idle" | "uploading" | "processing" | "completed" | "error";
+  currentFile?: string | null;
+  currentProgress?: number;
+  currentStage?: string;
 }
 
 export default function BatchProgress({
   total,
   processed,
   status = "idle",
+  currentFile,
+  currentProgress = 0,
+  currentStage = "",
 }: BatchProgressProps) {
-  const progress =
-    total > 0 ? Math.min(Math.round((processed / total) * 100), 100) : 0;
+  const progress = total > 0
+    ? Math.min(Math.round(((processed + currentProgress / 100) / total) * 100), 100)
+    : 0;
 
   const statusText = {
     idle: "Ready",
     uploading: "Uploading...",
-    processing: "Processing vehicles...",
+    processing: "Processing audio files...",
     completed: "Completed",
     error: "Processing failed",
   }[status];
@@ -35,6 +42,11 @@ export default function BatchProgress({
           </h3>
 
           <p className="mt-1 text-sm text-gray-400">{statusText}</p>
+          {currentFile && status === "processing" && (
+            <p className="mt-1 text-xs text-gray-500">
+              {currentFile}: {currentStage} ({currentProgress}%)
+            </p>
+          )}
         </div>
 
         <span className="text-sm font-medium text-gray-300">
@@ -53,7 +65,7 @@ export default function BatchProgress({
         <span>{progress}%</span>
 
         {status === "completed" && (
-          <span className="text-green-400">All vehicles processed</span>
+          <span className="text-green-400">All audio files processed</span>
         )}
       </div>
     </div>

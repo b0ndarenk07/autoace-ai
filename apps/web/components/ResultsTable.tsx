@@ -1,5 +1,7 @@
 "use client";
 
+import { Download } from "lucide-react";
+
 export type EmotionalTone =
   | "neutral"
   | "satisfied"
@@ -117,6 +119,20 @@ function getStatusClass(status?: AudioResult["status"]) {
   }
 }
 
+function exportResults(results: AudioResult[]) {
+  const content = JSON.stringify(results, null, 2);
+  const blob = new Blob([content], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = `autoace-results-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
 export default function ResultsTable({
   results = [],
   onClear,
@@ -150,17 +166,28 @@ export default function ResultsTable({
             </p>
           </div>
 
-          {onClear && (
+          <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={onClear}
-              aria-label="Clear analysis results"
-              title="Clear analysis results"
-              className="rounded-md p-2 text-gray-500 transition hover:bg-gray-800 hover:text-white"
+              onClick={() => exportResults(results)}
+              className="inline-flex items-center gap-2 rounded-md border border-gray-700 px-3 py-2 text-xs font-medium text-gray-300 transition hover:bg-gray-800 hover:text-white"
             >
-              <span aria-hidden="true">×</span>
+              <Download size={14} aria-hidden="true" />
+              Export JSON
             </button>
-          )}
+
+            {onClear && (
+              <button
+                type="button"
+                onClick={onClear}
+                aria-label="Clear analysis results"
+                title="Clear analysis results"
+                className="rounded-md p-2 text-gray-500 transition hover:bg-gray-800 hover:text-white"
+              >
+                <span aria-hidden="true">×</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
 

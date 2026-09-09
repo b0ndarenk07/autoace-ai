@@ -33,6 +33,12 @@ class BatchStatusResponse(BaseModel):
     status: BatchStatus
     total: int = Field(ge=0)
     processed: int = Field(ge=0)
+    files: dict[str, FileStatus] = {}
+    results: list[dict] = []
+    file_progress: dict[str, int] = {}
+    current_file: Optional[str] = None
+    current_progress: int = Field(ge=0, le=100)
+    current_stage: str = "waiting"
 
 
 class BatchFileError(BaseModel):

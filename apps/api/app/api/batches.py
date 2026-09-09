@@ -1,15 +1,16 @@
-import csv
 import io
-import json
 import zipfile
 from pathlib import Path
 from uuid import uuid4
+
 from app.schemas.batch import (
     BatchCreateResponse,
     BatchResultsResponse,
     BatchStatusResponse,
 )
-from fastapi import APIRouter, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile, status
+
+from workers.audio.pipeline import failsafe_analyze_audio
 
 router = APIRouter(prefix="/batches", tags=["batches"])
 
@@ -29,60 +30,53 @@ MAX_BATCH_SIZE = 250 * 1024 * 1024  # 250 MB
 _batches = {}
 
 
-def _validate_manifest(manifest_bytes: bytes):
-    try:
-        text = manifest_bytes.decode("utf-8-sig")
-        rows = list(csv.DictReader(io.StringIO(text)))
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid manifest.csv: {exc}",
-        )
+def _process_batch(batch_id: str, audio_files: dict[str, bytes]) -> None:
+    """Analyze batch files independently after the upload response is sent."""
+    batch = _batches[batch_id]
 
-    if not rows:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="manifest.csv contains no rows.",
-        )
+    for name, audio_bytes in audio_files.items():
+        def report_progress(filename: str, progress: int, stage: str) -> None:
+            batch["current_file"] = filename
+            batch["current_progress"] = progress
+            batch["current_stage"] = stage
+            batch["file_progress"][filename] = progress
 
-    if "name" not in rows[0]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail='manifest.csv must contain a "name" column.',
-        )
+        try:
+            prediction = failsafe_analyze_audio(audio_bytes, name, report_progress)
+            batch["files"][name] = {
+                "status": "completed",
+                "prediction": prediction,
+            }
+        except Exception as exc:
+            batch["files"][name] = {
+                "status": "error",
+                "error": str(exc),
+            }
 
-    if "result_json" not in rows[0]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail='manifest.csv must contain a "result_json" column.',
-        )
+        batch["processed"] += 1
+        batch["current_progress"] = 100
 
-    manifest = {}
-
-    for row in rows:
-        name = (row.get("name") or "").strip()
-
-        if not name:
-            continue
-
-        result_json = (row.get("result_json") or "").strip()
-
-        manifest[name] = result_json
-
-    return manifest
+    batch["status"] = (
+        "completed"
+        if all(item["status"] == "completed" for item in batch["files"].values())
+        else "completed_with_errors"
+    )
 
 
 @router.post("", response_model=BatchCreateResponse)
-async def create_batch(file: UploadFile = File(...)):
+async def create_batch(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+):
     """
     Upload a ZIP containing:
 
         call1.ogg
-        call2.ogg
+        call2.wav
         ...
-        manifest.csv
 
-    Audio files must be at the ZIP root.
+    Supported audio files must be at the ZIP root. Each file is analyzed
+    independently using the same pipeline as the single-file endpoint.
     """
 
     filename = file.filename or ""
@@ -111,26 +105,13 @@ async def create_batch(file: UploadFile = File(...)):
 
     members = archive.namelist()
 
-    # We intentionally require manifest.csv at the root.
-    manifest_name = "manifest.csv"
-
-    if manifest_name not in members:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="ZIP must contain manifest.csv at the root.",
-        )
-
-    manifest = _validate_manifest(
-        archive.read(manifest_name)
-    )
-
     audio_files = {}
 
     for member in members:
         path = Path(member)
 
-        # Ignore directories and manifest.
-        if member.endswith("/") or member == manifest_name:
+        # Ignore directories and nested files.
+        if member.endswith("/"):
             continue
 
         # Audio must exist at ZIP root.
@@ -148,12 +129,6 @@ async def create_batch(file: UploadFile = File(...)):
             detail="ZIP contains no supported audio files.",
         )
 
-    audio_names = set(audio_files)
-    manifest_names = set(manifest)
-
-    missing_from_manifest = sorted(audio_names - manifest_names)
-    missing_from_zip = sorted(manifest_names - audio_names)
-
     batch_id = str(uuid4())
 
     _batches[batch_id] = {
@@ -162,54 +137,25 @@ async def create_batch(file: UploadFile = File(...)):
         "total": len(audio_files),
         "processed": 0,
         "files": {},
-        "manifest": manifest,
+        "file_progress": {},
+        "current_file": None,
+        "current_progress": 0,
+        "current_stage": "waiting",
     }
 
-    # Every file is processed independently.
-    for name, audio_bytes in audio_files.items():
-        if name in missing_from_manifest:
-            _batches[batch_id]["files"][name] = {
-                "status": "error",
-                "error": "Audio file is missing from manifest.csv.",
-            }
-            continue
-
-        try:
-            # TODO:
-            # Pass audio_bytes into the actual AutoAce inference service.
-            #
-            # prediction = analyze_audio(audio_bytes)
-            #
-            # For now, mark the file as pending.
-
-            _batches[batch_id]["files"][name] = {
-                "status": "processing",
-                "prediction": None,
-            }
-
-        except Exception as exc:
-            _batches[batch_id]["files"][name] = {
-                "status": "error",
-                "error": str(exc),
-            }
-
-        _batches[batch_id]["processed"] += 1
-
-    for name in missing_from_zip:
+    for name in audio_files:
         _batches[batch_id]["files"][name] = {
-            "status": "error",
-            "error": "File listed in manifest.csv was not found in the ZIP.",
+            "status": "processing",
+            "prediction": None,
         }
 
-    _batches[batch_id]["status"] = "completed"
+    background_tasks.add_task(_process_batch, batch_id, audio_files)
 
     return {
         "batch_id": batch_id,
         "status": _batches[batch_id]["status"],
         "total": _batches[batch_id]["total"],
         "processed": _batches[batch_id]["processed"],
-        "missing_from_manifest": missing_from_manifest,
-        "missing_from_zip": missing_from_zip,
     }
 
 
@@ -223,9 +169,38 @@ async def get_batch(batch_id: str):
             detail="Batch not found.",
         )
 
+    results = []
+    for name, item in batch["files"].items():
+        if item["status"] == "completed":
+            results.append({
+                "name": name,
+                **item["prediction"],
+                "status": "completed",
+            })
+        elif item["status"] == "error":
+            results.append({
+                "name": name,
+                "status": "error",
+                "error": item.get("error", "Unknown error"),
+            })
+        else:
+            results.append({
+                "name": name,
+                "status": "processing",
+            })
+
     return {
         "batch_id": batch["batch_id"],
         "status": batch["status"],
         "total": batch["total"],
         "processed": batch["processed"],
+        "files": {
+            name: item["status"]
+            for name, item in batch["files"].items()
+        },
+        "file_progress": batch["file_progress"],
+        "current_file": batch["current_file"],
+        "current_progress": batch["current_progress"],
+        "current_stage": batch["current_stage"],
+        "results": results,
     }

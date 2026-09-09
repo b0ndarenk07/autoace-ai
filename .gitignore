@@ -1,3 +1,4 @@
 ../web/.next/
 ../web/node_modules/
 ../api/.venv/
+../web/.env.local
