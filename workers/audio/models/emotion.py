@@ -98,3 +98,21 @@ def classify_emotional_tone(features: Mapping[str, float]) -> tuple[str, float]:
 	tone = max(scores, key=scores.get)
 	confidence = round(max(0.0, min(1.0, scores[tone])), 2)
 	return tone, confidence
+
+
+def classify_emotional_intensity(features: Mapping[str, float]) -> str:
+	"""Map vocal activation features to the API intensity enum."""
+	activation = (
+		0.35 * features.get("energy", 0.0)
+		+ 0.25 * features.get("energy_variability", 0.0)
+		+ 0.20 * features.get("pitch_variability", 0.0)
+		+ 0.20 * features.get("speaking_rate", 0.0)
+	)
+
+	if activation >= 0.70:
+		return "high"
+
+	if activation >= 0.35:
+		return "medium"
+
+	return "low"
