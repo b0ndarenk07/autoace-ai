@@ -2,3 +2,4 @@
 ../web/node_modules/
 ../api/.venv/
 ../web/.env.local
+*.egg-info/
