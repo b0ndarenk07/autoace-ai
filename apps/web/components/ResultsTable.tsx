@@ -38,6 +38,7 @@ export interface AudioResult {
 
 interface ResultsTableProps {
   results?: AudioResult[];
+  onClear?: () => void;
 }
 
 function formatConfidence(value: number) {
@@ -118,6 +119,7 @@ function getStatusClass(status?: AudioResult["status"]) {
 
 export default function ResultsTable({
   results = [],
+  onClear,
 }: ResultsTableProps) {
   if (results.length === 0) {
     return (
@@ -136,14 +138,30 @@ export default function ResultsTable({
   return (
     <div className="overflow-hidden rounded-xl border border-gray-800 bg-gray-900/60">
       <div className="border-b border-gray-800 px-5 py-4">
-        <h3 className="text-sm font-semibold text-white">
-          Analysis Results
-        </h3>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="text-sm font-semibold text-white">
+              Analysis Results
+            </h3>
 
-        <p className="mt-1 text-sm text-gray-500">
-          {results.length} audio clip
-          {results.length === 1 ? "" : "s"} analyzed
-        </p>
+            <p className="mt-1 text-sm text-gray-500">
+              {results.length} audio clip
+              {results.length === 1 ? "" : "s"} analyzed
+            </p>
+          </div>
+
+          {onClear && (
+            <button
+              type="button"
+              onClick={onClear}
+              aria-label="Clear analysis results"
+              title="Clear analysis results"
+              className="rounded-md p-2 text-gray-500 transition hover:bg-gray-800 hover:text-white"
+            >
+              <span aria-hidden="true">×</span>
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="overflow-x-auto">

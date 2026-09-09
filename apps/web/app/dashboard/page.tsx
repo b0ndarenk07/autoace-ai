@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import {
   Activity,
   CheckCircle2,
@@ -10,10 +11,67 @@ import {
 
 import BatchUploader from "../../components/BatchUploader";
 import BatchProgress from "../../components/BatchProgress";
+import ResultsTable, {
+  type AudioResult,
+} from "../../components/ResultsTable";
+
+const apiBaseUrl =
+  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
 export default function DashboardPage() {
+  const [batchId, setBatchId] = useState<string | null>(null);
+  const [batchStatus, setBatchStatus] = useState<
+    "idle" | "uploading" | "processing" | "completed" | "error"
+  >("idle");
+  const [batchTotal, setBatchTotal] = useState(0);
+  const [batchProcessed, setBatchProcessed] = useState(0);
+  const [results, setResults] = useState<AudioResult[]>([]);
+
+  useEffect(() => {
+    if (!batchId) return;
+
+    let timer: ReturnType<typeof setInterval> | undefined;
+
+    const pollBatch = async () => {
+      try {
+        const response = await fetch(`${apiBaseUrl}/batches/${batchId}`);
+        if (!response.ok) return;
+
+        const data = await response.json();
+        setBatchTotal(data.total ?? 0);
+        setBatchProcessed(data.processed ?? 0);
+
+        if (data.status === "processing") {
+          setBatchStatus("processing");
+          return;
+        }
+
+        if (data.status === "completed_with_errors") {
+          setBatchStatus("completed");
+          return;
+        }
+
+        setBatchStatus(data.status === "error" ? "error" : "completed");
+
+        if (data.status === "completed" || data.status === "error") {
+          if (timer) clearInterval(timer);
+        }
+      } catch {
+        setBatchStatus("error");
+        if (timer) clearInterval(timer);
+      }
+    };
+
+    pollBatch();
+    timer = setInterval(pollBatch, 1500);
+
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [batchId]);
+
   return (
     <main className="min-h-screen bg-slate-950 text-white">
-      {/* Header */}
       <header className="border-b border-slate-800 bg-slate-950/90">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
           <div>
@@ -39,7 +97,6 @@ export default function DashboardPage() {
       </header>
 
       <div className="mx-auto max-w-7xl px-6 py-8">
-        {/* Page heading */}
         <div className="mb-8">
           <h2 className="text-2xl font-semibold">Audio Analysis</h2>
           <p className="mt-1 text-sm text-slate-400">
@@ -48,24 +105,31 @@ export default function DashboardPage() {
           </p>
         </div>
 
-        {/* Stats */}
         <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard
             icon={<FileAudio size={20} />}
             label="Files processed"
-            value="0"
+            value={String(batchProcessed || 0)}
           />
 
           <StatCard
             icon={<CheckCircle2 size={20} />}
             label="Completed"
-            value="0"
+            value={
+              batchStatus === "completed"
+                ? String(batchProcessed || 0)
+                : "0"
+            }
           />
 
           <StatCard
             icon={<Clock3 size={20} />}
             label="Processing"
-            value="0"
+            value={
+              batchStatus === "processing"
+                ? String(Math.max(batchTotal - batchProcessed, 0))
+                : "0"
+            }
           />
 
           <StatCard
@@ -75,7 +139,6 @@ export default function DashboardPage() {
           />
         </div>
 
-        {/* Upload section */}
         <section className="rounded-2xl border border-slate-800 bg-slate-900/50 p-6">
           <div className="mb-6 flex items-start gap-4">
             <div className="rounded-xl bg-slate-800 p-3">
@@ -90,17 +153,41 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <BatchUploader />
+          <BatchUploader
+            onSingleResult={(result) => {
+              setResults([result]);
+              setBatchId(null);
+              setBatchStatus("completed");
+              setBatchTotal(1);
+              setBatchProcessed(1);
+            }}
+            onUploadSuccess={(nextBatchId, total) => {
+              setResults([]);
+              setBatchId(nextBatchId);
+              setBatchStatus("processing");
+              setBatchTotal(total);
+              setBatchProcessed(0);
+            }}
+          />
+
+          {batchId && (
             <div className="mt-6">
-                <BatchProgress
-                    total={100}
-                    processed={42}
-                    status="processing"
-                />
+              <BatchProgress
+                total={batchTotal}
+                processed={batchProcessed}
+                status={batchStatus}
+              />
             </div>
+          )}
         </section>
 
-        {/* Recent batches */}
+        <section className="mt-8">
+          <ResultsTable
+            results={results}
+            onClear={() => setResults([])}
+          />
+        </section>
+
         <section className="mt-8">
           <div className="mb-4 flex items-center justify-between">
             <div>
@@ -119,12 +206,13 @@ export default function DashboardPage() {
               />
 
               <p className="text-sm font-medium text-slate-300">
-                No batches yet
+                {batchId ? "Latest batch is active" : "No batches yet"}
               </p>
 
               <p className="mt-1 max-w-md text-sm text-slate-500">
-                Upload your first batch above and its processing status and
-                results will appear here.
+                {batchId
+                  ? `Batch ${batchId.slice(0, 8)} is running with ${batchProcessed}/${batchTotal} files processed.`
+                  : "Upload your first batch above and its processing status and results will appear here."}
               </p>
             </div>
           </div>

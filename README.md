@@ -38,7 +38,29 @@ Structure AutoAce AI
 │
 └── ...
 
-<!-- /Processing Results -->
+
+
+                    AutoAce AI Dashboard
+                            │
+             ┌──────────────┴──────────────┐
+             │                             │
+       Single Call                    Batch Evaluation
+             │                             │
+        .ogg / audio                 ZIP / folder
+             │                             │
+             ▼                             ▼
+       Analyze one                    Validate batch
+             │                             │
+             └──────────────┬──────────────┘
+                            ▼
+                     Same prediction
+                         pipeline
+                            │
+                            ▼
+                    Required JSON schema
+                            │
+                            ▼
+                       Results UI
 
 Start
 ↓
@@ -72,3 +94,12 @@ Python worker
 ├── Emotion model
 ├── Noise detection
 └── Quality analysis
+
+BACKEND 
+POST /auth/login
+POST /batches
+GET  /batches/{batch_id}
+GET  /batches/{batch_id}/results
+GET  /batches/{batch_id}/download
+
+POST /single
